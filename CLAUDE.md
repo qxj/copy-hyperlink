@@ -9,7 +9,7 @@ A Manifest V3 Chrome extension (vanilla JS, no build step, no dependencies) that
 ## Commands
 
 - **Load for development:** `chrome://extensions` → Developer Mode → "Load unpacked" → point at this directory. Edits to `*.js`/`*.html` need a reload of the extension and a refresh of any open tabs (because content scripts only inject on document_start).
-- **Package for Web Store:** `./build.sh` produces `copy-hyperlink-0.x.zip` (rename to match `manifest.json` `version`, e.g. `0.2`). The script excludes `.git/`, `.vscode/`, `*.DS_Store`, `build.sh`, `README.md`, and existing `*.zip`s.
+- **Package for Web Store:** `./build.sh` reads `version` from `manifest.json` and produces `copy-hyperlink-<version>.zip` (e.g. `copy-hyperlink-0.3.zip`). The script excludes `.git/`, `.vscode/`, `*.DS_Store`, `build.sh`, `README.md`, `CLAUDE.md`, and existing `*.zip`s.
 - **Bumping version:** any feature change or bug fix that will be uploaded to the Chrome Web Store **must** increment `manifest.json` `version` before re-running `build.sh` — the Web Store rejects uploads whose version is not strictly greater than the published one (`Invalid version number in manifest`). Bump as part of the same change, not as a follow-up.
 - No tests, lint, or formatter configured.
 
