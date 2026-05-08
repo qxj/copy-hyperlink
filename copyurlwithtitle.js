@@ -53,14 +53,23 @@
 
     function isSelected() {
         var sel = window.getSelection();
-        if (!sel || sel.rangeCount <= 0) return false;
-        if (sel.rangeCount > 1) return true;
-        var range = sel.getRangeAt(0);
-        if (!range.collapsed) return true;
-        if (range.startContainer !== range.endContainer) return true;
-        if (range.startOffset !== range.endOffset) return true;
+        if (sel && sel.rangeCount > 0) {
+            for (var i = 0; i < sel.rangeCount; i++) {
+                var range = sel.getRangeAt(i);
+                if (!range.collapsed) return true;
+                if (range.startContainer !== range.endContainer) return true;
+                if (range.startOffset !== range.endOffset) return true;
+            }
+        }
+        // No actual text selection. Only let normal copy through when the user
+        // is inside an editable element — otherwise plain focus on links,
+        // tabindex divs, turbo-frames, etc. (common on GitHub) would suppress
+        // the URL copy even though there is nothing to copy.
         var ae = document.activeElement;
-        if (ae && ae.tagName && ae.tagName.toLowerCase() !== "body") return true;
+        if (!ae) return false;
+        var tag = (ae.tagName || "").toLowerCase();
+        if (tag === "input" || tag === "textarea" || tag === "select") return true;
+        if (ae.isContentEditable) return true;
         return false;
     }
 
