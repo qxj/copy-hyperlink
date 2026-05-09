@@ -51,6 +51,33 @@
         return true;
     }
 
+    // Pierce open shadow roots so editors that mount their inner <textarea>
+    // inside a shadow tree (DataWorks SQL editor, some Monaco hosts, etc.)
+    // expose the *real* focused element instead of just the shadow host.
+    function getDeepActiveElement() {
+        var el = document.activeElement;
+        while (el && el.shadowRoot && el.shadowRoot.activeElement) {
+            el = el.shadowRoot.activeElement;
+        }
+        return el;
+    }
+
+    // Code editors (Monaco, CodeMirror 5/6, ACE) render their selection as
+    // overlay divs rather than DOM Selection, so window.getSelection() looks
+    // empty even when the user has highlighted code. Walk ancestors looking
+    // for the well-known editor wrapper classes — if we are inside one,
+    // assume the user wants the editor's own copy semantics.
+    function isInsideKnownEditor(el) {
+        for (var node = el; node && node.nodeType === 1; node = node.parentElement) {
+            if (!node.classList) continue;
+            if (node.classList.contains("monaco-editor")) return true;
+            if (node.classList.contains("CodeMirror")) return true;   // CM 5
+            if (node.classList.contains("cm-editor")) return true;    // CM 6
+            if (node.classList.contains("ace_editor")) return true;
+        }
+        return false;
+    }
+
     function isSelected() {
         var sel = window.getSelection();
         if (sel && sel.rangeCount > 0) {
@@ -62,14 +89,16 @@
             }
         }
         // No actual text selection. Only let normal copy through when the user
-        // is inside an editable element — otherwise plain focus on links,
-        // tabindex divs, turbo-frames, etc. (common on GitHub) would suppress
-        // the URL copy even though there is nothing to copy.
-        var ae = document.activeElement;
+        // is inside something that has its own copy semantics — otherwise
+        // plain focus on links, tabindex divs, turbo-frames, etc. (common on
+        // GitHub) would suppress the URL copy even though there is nothing
+        // to copy.
+        var ae = getDeepActiveElement();
         if (!ae) return false;
         var tag = (ae.tagName || "").toLowerCase();
         if (tag === "input" || tag === "textarea" || tag === "select") return true;
         if (ae.isContentEditable) return true;
+        if (isInsideKnownEditor(ae)) return true;
         return false;
     }
 

@@ -26,7 +26,14 @@ Injected into every http(s) frame at `document_start`, **including iframes** (`a
 1. Modern: `navigator.clipboard.write([new ClipboardItem({ "text/html": ..., "text/plain": ... })])` so rich-text editors get the anchor and plain-text targets get `title\nurl`.
 2. Legacy fallback (`legacyCopy`): inserts a hidden `<a>`, builds a Range across it, calls `document.execCommand("copy")`, restores the previous selection. Triggered when `ClipboardItem` is unavailable or the modern call rejects.
 
-**"Has selection" detection** (`isSelected()`) returns true only when there is an actual non-collapsed Range, *or* `document.activeElement` is a real editable (`<input>`, `<textarea>`, `<select>`, or `contentEditable`). Plain focus on a link / tabindex div / turbo-frame must not suppress the URL copy — that was the original GitHub `application-main` regression: clicking the main column moved focus to a non-body, non-editable element, and the older "any non-body active element" heuristic falsely treated it as "user is editing" and bailed out.
+**"Has selection" detection** (`isSelected()`) returns true when:
+1. There is an actual non-collapsed DOM Range, **or**
+2. The deep `activeElement` (piercing open shadow roots — see `getDeepActiveElement()`) is a real editable (`<input>`, `<textarea>`, `<select>`, or `contentEditable`), **or**
+3. The deep `activeElement` is inside a known code-editor wrapper (`.monaco-editor`, `.CodeMirror`, `.cm-editor`, `.ace_editor`).
+
+The shadow-piercing step is needed for hosts that mount the editor's hidden `<textarea>` inside a shadow tree (e.g. Aliyun DataWorks SQL editor) — without it, `document.activeElement` only reveals the shadow host and our editable-tag check is blind. The known-editor class walk handles editors whose visible "selection" is rendered as overlay divs rather than DOM Selection (Monaco, CodeMirror, ACE), so even when the user has clearly highlighted code we don't steal their copy.
+
+Plain focus on a link / tabindex div / turbo-frame must still **not** suppress the URL copy — that was the original GitHub `application-main` regression: clicking the main column moved focus to a non-body, non-editable element, and the older "any non-body active element" heuristic falsely treated it as "user is editing" and bailed out.
 
 ### Options page (`options.html` + `options.js`)
 Recorder UI: click **Record**, press a combo, click **Save**. Persists `{ ctrl, meta, alt, shift, key }` to `chrome.storage.sync` under the key `shortcut`. The content script reads the same key on load and subscribes via `chrome.storage.onChanged` so changes take effect without reloading the page. Default is platform-aware: Cmd+C on macOS, Ctrl+C elsewhere.

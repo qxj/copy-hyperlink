@@ -1,6 +1,7 @@
 {
    "content_scripts": [ {
       "all_frames": true,
+      "match_about_blank": true,
       "js": [ "toast.js", "copyurlwithtitle.js" ],
       "matches": [ "http://*/*", "https://*/*" ],
       "run_at": "document_start"
@@ -17,5 +18,5 @@
       "page": "options.html",
       "open_in_tab": false
    },
-   "version": "0.3"
+   "version": "0.4"
 }
