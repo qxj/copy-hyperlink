@@ -51,35 +51,30 @@
         return true;
     }
 
-    // Pierce open shadow roots so editors that mount their inner <textarea>
-    // inside a shadow tree (DataWorks SQL editor, some Monaco hosts, etc.)
-    // expose the *real* focused element instead of just the shadow host.
-    function getDeepActiveElement() {
-        var el = document.activeElement;
-        while (el && el.shadowRoot && el.shadowRoot.activeElement) {
-            el = el.shadowRoot.activeElement;
-        }
-        return el;
-    }
-
-    // Code editors (Monaco, CodeMirror 5/6, ACE) render their selection as
-    // overlay divs rather than DOM Selection, so window.getSelection() looks
-    // empty even when the user has highlighted code. Walk ancestors looking
-    // for the well-known editor wrapper classes — if we are inside one,
-    // assume the user wants the editor's own copy semantics.
-    function isInsideKnownEditor(el) {
-        for (var node = el; node && node.nodeType === 1; node = node.parentElement) {
-            if (!node.classList) continue;
-            if (node.classList.contains("monaco-editor")) return true;
-            if (node.classList.contains("CodeMirror")) return true;   // CM 5
-            if (node.classList.contains("cm-editor")) return true;    // CM 6
-            if (node.classList.contains("ace_editor")) return true;
+    // Return true if `el` is a form control, contentEditable, or sits inside
+    // a known code-editor wrapper (Monaco, CodeMirror 5/6, ACE) whose visible
+    // "selection" is rendered as overlay divs rather than DOM Selection.
+    function isElementEditable(el) {
+        if (!el || el.nodeType !== 1) return false;
+        var tag = (el.tagName || "").toLowerCase();
+        if (tag === "input" || tag === "textarea" || tag === "select") return true;
+        if (el.isContentEditable) return true;
+        if (el.classList) {
+            if (el.classList.contains("monaco-editor")) return true;
+            if (el.classList.contains("CodeMirror")) return true;   // CM 5
+            if (el.classList.contains("cm-editor")) return true;    // CM 6
+            if (el.classList.contains("ace_editor")) return true;
         }
         return false;
     }
 
-    function isSelected() {
+    function isSelected(event) {
         var sel = window.getSelection();
+        // Fast path: any visible selection text means a real selection exists.
+        // Cheaper to read and immune to edge cases where Range.collapsed is
+        // unreliable (e.g. selections inside non-input non-contenteditable
+        // surfaces on certain custom components).
+        if (sel && sel.toString().length > 0) return true;
         if (sel && sel.rangeCount > 0) {
             for (var i = 0; i < sel.rangeCount; i++) {
                 var range = sel.getRangeAt(i);
@@ -88,17 +83,16 @@
                 if (range.startOffset !== range.endOffset) return true;
             }
         }
-        // No actual text selection. Only let normal copy through when the user
-        // is inside something that has its own copy semantics — otherwise
-        // plain focus on links, tabindex divs, turbo-frames, etc. (common on
-        // GitHub) would suppress the URL copy even though there is nothing
-        // to copy.
-        var ae = getDeepActiveElement();
-        if (!ae) return false;
-        var tag = (ae.tagName || "").toLowerCase();
-        if (tag === "input" || tag === "textarea" || tag === "select") return true;
-        if (ae.isContentEditable) return true;
-        if (isInsideKnownEditor(ae)) return true;
+        // Walk the event's composed path: it pierces shadow DOMs natively (so
+        // Monaco-in-DataWorks, custom-element wrapped inputs, etc. all surface
+        // their real focused control) AND it walks ancestors in one pass, so
+        // any enclosing editor wrapper class is checked along the way.
+        // Includes the input/textarea even when the page retargets event.target
+        // to a shadow host or a sibling component.
+        var path = (event && event.composedPath) ? event.composedPath() : [];
+        for (var j = 0; j < path.length; j++) {
+            if (isElementEditable(path[j])) return true;
+        }
         return false;
     }
 
@@ -189,7 +183,7 @@
     // fixes the "I have to click the outer page first" problem.
     function onKeyDown(event) {
         if (!matchesShortcut(event)) return;
-        if (isSelected()) return; // let normal copy proceed
+        if (isSelected(event)) return; // let normal copy proceed
 
         if (window.top === window.self) {
             event.preventDefault();

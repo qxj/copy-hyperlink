@@ -26,14 +26,16 @@ Injected into every http(s) frame at `document_start`, **including iframes** (`a
 1. Modern: `navigator.clipboard.write([new ClipboardItem({ "text/html": ..., "text/plain": ... })])` so rich-text editors get the anchor and plain-text targets get `title\nurl`.
 2. Legacy fallback (`legacyCopy`): inserts a hidden `<a>`, builds a Range across it, calls `document.execCommand("copy")`, restores the previous selection. Triggered when `ClipboardItem` is unavailable or the modern call rejects.
 
-**"Has selection" detection** (`isSelected()`) returns true when:
-1. There is an actual non-collapsed DOM Range, **or**
-2. The deep `activeElement` (piercing open shadow roots — see `getDeepActiveElement()`) is a real editable (`<input>`, `<textarea>`, `<select>`, or `contentEditable`), **or**
-3. The deep `activeElement` is inside a known code-editor wrapper (`.monaco-editor`, `.CodeMirror`, `.cm-editor`, `.ace_editor`).
+**"Has selection" detection** (`isSelected(event)`) returns true when:
+1. `window.getSelection().toString()` is non-empty (the fast path — visible selection text always wins), **or**
+2. There is a non-collapsed DOM Range / cross-container range, **or**
+3. Any element in `event.composedPath()` is editable per `isElementEditable()` — i.e. an `<input>` / `<textarea>` / `<select>`, `contentEditable`, or a known code-editor wrapper (`.monaco-editor`, `.CodeMirror`, `.cm-editor`, `.ace_editor`).
 
-The shadow-piercing step is needed for hosts that mount the editor's hidden `<textarea>` inside a shadow tree (e.g. Aliyun DataWorks SQL editor) — without it, `document.activeElement` only reveals the shadow host and our editable-tag check is blind. The known-editor class walk handles editors whose visible "selection" is rendered as overlay divs rather than DOM Selection (Monaco, CodeMirror, ACE), so even when the user has clearly highlighted code we don't steal their copy.
+The `toString()` check is intentionally first and cheap: it sidesteps any edge cases where reading `Range.collapsed` mis-reports (some custom components rendered as plain `<div>` containers — e.g. SwiftX-style "disabled" inputs that are actually styled divs — exhibited this), and it short-circuits before we touch composedPath at all.
 
-Plain focus on a link / tabindex div / turbo-frame must still **not** suppress the URL copy — that was the original GitHub `application-main` regression: clicking the main column moved focus to a non-body, non-editable element, and the older "any non-body active element" heuristic falsely treated it as "user is editing" and bailed out.
+`composedPath()` is load-bearing here. It's the only standard API that pierces shadow DOMs *and* lists ancestors in one pass — `document.activeElement` only sees outermost shadow hosts (Web Components wrapping a real `<input>` will hide it), and walking `parentElement` doesn't cross shadow boundaries. The path includes everything from the actual focus target up through shadow hosts and DOM ancestors, so the same loop catches both "focus is on a `<textarea>` inside a Web Component" (DataWorks-style) and "focus is anywhere inside a `.monaco-editor` whose virtual selection is invisible to DOM Selection."
+
+Plain focus on a link / tabindex div / turbo-frame must still **not** suppress the URL copy — that was the original GitHub `application-main` regression: clicking the main column moved focus to a non-body, non-editable element, and an early "any non-body active element" heuristic falsely treated it as "user is editing" and bailed out. The composedPath walk only matches *editable* elements/wrappers, so non-editable focused elements correctly fall through to the URL copy.
 
 ### Options page (`options.html` + `options.js`)
 Recorder UI: click **Record**, press a combo, click **Save**. Persists `{ ctrl, meta, alt, shift, key }` to `chrome.storage.sync` under the key `shortcut`. The content script reads the same key on load and subscribes via `chrome.storage.onChanged` so changes take effect without reloading the page. Default is platform-aware: Cmd+C on macOS, Ctrl+C elsewhere.
